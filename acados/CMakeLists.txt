@@ -31,7 +31,6 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-
 set(PACKAGE_SO_VERSION "0.1")
 
 include(CMakePackageConfigHelpers)
@@ -70,7 +69,7 @@ add_library(acados ${ACADOS_SRC})
 
 target_include_directories(acados
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}> # to be able to include "acados/header.h"
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}> # to be able to include "acados/header.h"
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/include>
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/source>
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/KKTPACK_DENSE/include>
@@ -79,7 +78,7 @@ target_include_directories(acados
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore>
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/hpipm/include>
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interfaces>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/interfaces>
         $<INSTALL_INTERFACE:include>)
 
 # OPENMP
