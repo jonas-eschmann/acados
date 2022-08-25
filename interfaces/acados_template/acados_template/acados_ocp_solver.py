@@ -213,16 +213,13 @@ def make_ocp_dims_consistent(acados_ocp):
 
     ## constraints
     # initial
-    if (constraints.lbx_0 == [] and constraints.ubx_0 == []):
-        dims.nbx_0 = 0
-    else:
-        this_shape = constraints.lbx_0.shape
-        other_shape = constraints.ubx_0.shape
-        if not this_shape == other_shape:
-            raise Exception('lbx_0, ubx_0 have different shapes!')
-        if not is_column(constraints.lbx_0):
-            raise Exception('lbx_0, ubx_0 must be column vectors!')
-        dims.nbx_0 = constraints.lbx_0.size
+    this_shape = constraints.lbx_0.shape
+    other_shape = constraints.ubx_0.shape
+    if not this_shape == other_shape:
+        raise Exception('lbx_0, ubx_0 have different shapes!')
+    if not is_column(constraints.lbx_0):
+        raise Exception('lbx_0, ubx_0 must be column vectors!')
+    dims.nbx_0 = constraints.lbx_0.size
 
     if all(constraints.lbx_0 == constraints.ubx_0) and dims.nbx_0 == dims.nx \
         and dims.nbxe_0 is None \
@@ -1291,16 +1288,22 @@ class AcadosOcpSolver:
         # get iterate:
         solution = dict()
 
+        lN = len(str(self.N+1))
         for i in range(self.N+1):
-            solution['x_'+str(i)] = self.get(i,'x')
-            solution['u_'+str(i)] = self.get(i,'u')
-            solution['z_'+str(i)] = self.get(i,'z')
-            solution['lam_'+str(i)] = self.get(i,'lam')
-            solution['t_'+str(i)] = self.get(i, 't')
-            solution['sl_'+str(i)] = self.get(i, 'sl')
-            solution['su_'+str(i)] = self.get(i, 'su')
-        for i in range(self.N):
-            solution['pi_'+str(i)] = self.get(i,'pi')
+            i_string = f'{i:0{lN}d}'
+            solution['x_'+i_string] = self.get(i,'x')
+            solution['u_'+i_string] = self.get(i,'u')
+            solution['z_'+i_string] = self.get(i,'z')
+            solution['lam_'+i_string] = self.get(i,'lam')
+            solution['t_'+i_string] = self.get(i, 't')
+            solution['sl_'+i_string] = self.get(i, 'sl')
+            solution['su_'+i_string] = self.get(i, 'su')
+            if i < self.N:
+                solution['pi_'+i_string] = self.get(i,'pi')
+
+        for k in list(solution.keys()):
+            if len(solution[k]) == 0:
+                del solution[k]
 
         # save
         with open(filename, 'w') as f:
@@ -1824,13 +1827,15 @@ class AcadosOcpSolver:
 
         if not isinstance(param_values_, np.ndarray):
             raise Exception('param_values_ must be np.array.')
+        elif np.float64 != param_values_.dtype:
+            raise TypeError('param_values_ must be np.array of float64.')
 
         if param_values_.shape[0] != len(idx_values_):
             raise Exception(f'param_values_ and idx_values_ must be of the same size.' +
                  f' Got sizes idx {param_values_.shape[0]}, param_values {len(idx_values_)}.')
 
-        if any(idx_values_ > self.acados_ocp.dims.np):
-            raise Exception(f'idx_values_ contains value > np = {self.acados_ocp.dims.np}')
+        if any(idx_values_ >= self.acados_ocp.dims.np):
+            raise Exception(f'idx_values_ contains value >= np = {self.acados_ocp.dims.np}')
 
         stage = c_int(stage_)
         n_update = c_int(len(param_values_))
@@ -1858,4 +1863,6 @@ class AcadosOcpSolver:
             try:
                 self.dlclose(self.shared_lib._handle)
             except:
+                print(f"WARNING: acados Python interface could not close shared_lib handle of AcadosOcpSolver {self.model_name}.\n",
+                     "Attempting to create a new one with the same name will likely result in the old one being used!")
                 pass

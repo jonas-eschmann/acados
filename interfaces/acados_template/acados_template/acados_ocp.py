@@ -2124,6 +2124,7 @@ class AcadosOcpOptions:
         self.__sim_method_num_stages  = 4                     # number of stages in the integrator
         self.__sim_method_num_steps   = 1                     # number of steps in the integrator
         self.__sim_method_newton_iter = 3                     # number of Newton iterations in simulation method
+        self.__sim_method_newton_tol = 0.0
         self.__sim_method_jac_reuse = 0
         self.__qp_solver_tol_stat = None                      # QP solver stationarity tolerance
         self.__qp_solver_tol_eq   = None                      # QP solver equality tolerance
@@ -2159,15 +2160,24 @@ class AcadosOcpOptions:
         self.__full_step_dual = 0
         self.__eps_sufficient_descent = 1e-4
         self.__hpipm_mode = 'BALANCE'
+        self.__ext_fun_compile_flags = '-O2'
 
 
     @property
     def qp_solver(self):
         """QP solver to be used in the NLP solver.
-        String in ('PARTIAL_CONDENSING_HPIPM', 'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', 'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP').
+        String in ('PARTIAL_CONDENSING_HPIPM', 'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', 'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP', 'FULL_CONDENSING_DAQP').
         Default: 'PARTIAL_CONDENSING_HPIPM'.
         """
         return self.__qp_solver
+
+    @property
+    def ext_fun_compile_flags(self):
+        """
+        String with compiler flags for external function compilation.
+        Default: '-O2'.
+        """
+        return self.__ext_fun_compile_flags
 
     @property
     def hpipm_mode(self):
@@ -2283,6 +2293,15 @@ class AcadosOcpOptions:
         return self.__sim_method_newton_iter
 
     @property
+    def sim_method_newton_tol(self):
+        """
+        Tolerance of Newton system in simulation method.
+        Type: float: 0.0 means not used
+        Default: 0.0
+        """
+        return self.__sim_method_newton_tol
+
+    @property
     def sim_method_jac_reuse(self):
         """
         Integer determining if jacobians are reused within integrator or ndarray of ints > 0 of shape (N,).
@@ -2331,8 +2350,11 @@ class AcadosOcpOptions:
 
     @property
     def qp_solver_warm_start(self):
-        """QP solver: Warm starting.
-        0: no warm start; 1: warm start; 2: hot start."""
+        """
+        QP solver: Warm starting.
+        0: no warm start; 1: warm start; 2: hot start.
+        Default: 0
+        """
         return self.__qp_solver_warm_start
 
     @property
@@ -2572,7 +2594,8 @@ class AcadosOcpOptions:
     def qp_solver(self, qp_solver):
         qp_solvers = ('PARTIAL_CONDENSING_HPIPM', \
                 'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', \
-                'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP')
+                'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP', \
+                'FULL_CONDENSING_DAQP')
         if qp_solver in qp_solvers:
             self.__qp_solver = qp_solver
         else:
@@ -2606,6 +2629,13 @@ class AcadosOcpOptions:
         else:
             raise Exception('Invalid hpipm_mode value. Possible values are:\n\n' \
                     + ',\n'.join(hpipm_modes) + '.\n\nYou have: ' + hpipm_mode + '.\n\n')
+
+    @ext_fun_compile_flags.setter
+    def ext_fun_compile_flags(self, ext_fun_compile_flags):
+        if isinstance(ext_fun_compile_flags, str):
+            self.__ext_fun_compile_flags = ext_fun_compile_flags
+        else:
+            raise Exception('Invalid ext_fun_compile_flags, expected a string.\n')
 
     @hessian_approx.setter
     def hessian_approx(self, hessian_approx):

@@ -112,6 +112,8 @@ class AcadosSimOpts:
         self.__sim_method_num_stages = 1
         self.__sim_method_num_steps = 1
         self.__sim_method_newton_iter = 3
+        # doubles
+        self.__sim_method_newton_tol = 0.0
         # bools
         self.__sens_forw = True
         self.__sens_adj = False
@@ -119,6 +121,7 @@ class AcadosSimOpts:
         self.__sens_hess = False
         self.__output_z = False
         self.__sim_method_jac_reuse = 0
+        self.__ext_fun_compile_flags = '-O2'
 
     @property
     def integrator_type(self):
@@ -139,6 +142,15 @@ class AcadosSimOpts:
     def newton_iter(self):
         """Number of Newton iterations in simulation method. Default: 3"""
         return self.__sim_method_newton_iter
+
+    @property
+    def newton_tol(self):
+        """
+        Tolerance for Newton system solved in implicit integrator (IRK, GNSF).
+        0.0 means this is not used and exactly newton_iter iterations are carried out.
+        Default: 0.0
+        """
+        return self.__sim_method_newton_tol
 
     @property
     def sens_forw(self):
@@ -184,6 +196,21 @@ class AcadosSimOpts:
         """
         return self.__collocation_type
 
+    @property
+    def ext_fun_compile_flags(self):
+        """
+        String with compiler flags for external function compilation.
+        Default: '-O2'.
+        """
+        return self.__ext_fun_compile_flags
+
+    @ext_fun_compile_flags.setter
+    def ext_fun_compile_flags(self, ext_fun_compile_flags):
+        if isinstance(ext_fun_compile_flags, str):
+            self.__ext_fun_compile_flags = ext_fun_compile_flags
+        else:
+            raise Exception('Invalid ext_fun_compile_flags, expected a string.\n')
+
     @integrator_type.setter
     def integrator_type(self, integrator_type):
         integrator_types = ('ERK', 'IRK', 'GNSF')
@@ -226,6 +253,13 @@ class AcadosSimOpts:
             self.__sim_method_newton_iter = newton_iter
         else:
             raise Exception('Invalid newton_iter value. newton_iter must be an integer.')
+
+    @newton_tol.setter
+    def newton_tol(self, newton_tol):
+        if isinstance(newton_tol, float):
+            self.__sim_method_newton_tol = newton_tol
+        else:
+            raise Exception('Invalid newton_tol value. newton_tol must be an float.')
 
     @sens_forw.setter
     def sens_forw(self, sens_forw):

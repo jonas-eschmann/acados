@@ -32,11 +32,13 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-import sys, os, json
+import sys
+import os
+import json
 
 import numpy as np
 
-from ctypes import *
+from ctypes import POINTER, cast, CDLL, c_void_p, c_char_p, c_double, c_int, c_bool, byref
 from copy import deepcopy
 
 from .generate_c_code_explicit_ode import generate_c_code_explicit_ode
@@ -122,7 +124,7 @@ def sim_get_default_cmake_builder() -> CMakeBuilder:
     return cmake_builder
 
 
-def sim_render_templates(json_file, model_name, code_export_dir, cmake_options: CMakeBuilder = None):
+def sim_render_templates(json_file, model_name: str, code_export_dir, cmake_options: CMakeBuilder = None):
     # setting up loader and environment
     json_path = os.path.join(os.getcwd(), json_file)
 
@@ -198,6 +200,14 @@ class AcadosSimSolver:
             the `CMake` pipeline instead of a `Makefile` (`CMake` seems to be the better option in conjunction with
             `MS Visual Studio`); default: `None`
     """
+    if sys.platform=="win32":
+        from ctypes import wintypes
+        from ctypes import WinDLL
+        dlclose = WinDLL('kernel32', use_last_error=True).FreeLibrary
+        dlclose.argtypes = [wintypes.HMODULE]
+    else:
+        dlclose = CDLL(None).dlclose
+        dlclose.argtypes = [c_void_p]
     def __init__(self, acados_sim_, json_file='acados_sim.json', build=True, cmake_builder: CMakeBuilder = None):
 
         self.solver_created = False
@@ -244,8 +254,8 @@ class AcadosSimSolver:
                 os.system('make sim_shared_lib')
             os.chdir(cwd)
 
-        self.sim_struct = acados_sim
-        model_name = self.sim_struct.model.name
+        self.acados_sim = acados_sim
+        model_name = self.acados_sim.model.name
         self.model_name = model_name
 
         # prepare library loading
@@ -276,7 +286,6 @@ class AcadosSimSolver:
 
         # get shared_lib
         self.shared_lib = CDLL(self.shared_lib_name)
-
 
         # create capsule
         getattr(self.shared_lib, f"{model_name}_acados_sim_solver_create_capsule").restype = c_void_p
@@ -312,9 +321,9 @@ class AcadosSimSolver:
         getattr(self.shared_lib, f"{model_name}_acados_get_sim_solver").restype = c_void_p
         self.sim_solver = getattr(self.shared_lib, f"{model_name}_acados_get_sim_solver")(self.capsule)
 
-        nu = self.sim_struct.dims.nu
-        nx = self.sim_struct.dims.nx
-        nz = self.sim_struct.dims.nz
+        nu = self.acados_sim.dims.nu
+        nx = self.acados_sim.dims.nx
+        nz = self.acados_sim.dims.nz
         self.gettable = {
             'x': nx,
             'xn': nx,
@@ -325,10 +334,12 @@ class AcadosSimSolver:
             'Su': nx*nu,
             'S_adj': nx+nu,
             'S_hess': (nx+nu)*(nx+nu),
-            'S_algebraic': (nz)*(nx+nu),
+            'S_algebraic': (nz)*(nx+nu)
         }
 
-        self.settable = ['S_adj', 'T', 'x', 'u', 'xdot', 'z', 'p'] # S_forw
+        self.gettable_scalars = ['CPUtime', 'time_tot', 'ADtime', 'time_ad', 'LAtime', 'time_la']
+
+        self.settable = ['seed_adj', 'T', 'x', 'u', 'xdot', 'z', 'p'] # S_forw
 
 
     def solve(self):
@@ -346,13 +357,12 @@ class AcadosSimSolver:
         """
         Get the last solution of the solver.
 
-            :param str field: string in ['x', 'u', 'z', 'S_forw', 'Sx', 'Su', 'S_adj', 'S_hess', 'S_algebraic']
+            :param str field: string in ['x', 'u', 'z', 'S_forw', 'Sx', 'Su', 'S_adj', 'S_hess', 'S_algebraic', 'CPUtime', 'time_tot', 'ADtime', 'time_ad', 'LAtime', 'time_la']
         """
         field = field_
         field = field.encode('utf-8')
 
         if field_ in self.gettable.keys():
-
             # allocate array
             dims = self.gettable[field_]
             out = np.ascontiguousarray(np.zeros((dims,)), dtype=np.float64)
@@ -362,25 +372,32 @@ class AcadosSimSolver:
             self.shared_lib.sim_out_get(self.sim_config, self.sim_dims, self.sim_out, field, out_data)
 
             if field_ == 'S_forw':
-                nu = self.sim_struct.dims.nu
-                nx = self.sim_struct.dims.nx
+                nu = self.acados_sim.dims.nu
+                nx = self.acados_sim.dims.nx
                 out = out.reshape(nx, nx+nu, order='F')
             elif field_ == 'Sx':
-                nx = self.sim_struct.dims.nx
+                nx = self.acados_sim.dims.nx
                 out = out.reshape(nx, nx, order='F')
             elif field_ == 'Su':
-                nx = self.sim_struct.dims.nx
-                nu = self.sim_struct.dims.nu
+                nx = self.acados_sim.dims.nx
+                nu = self.acados_sim.dims.nu
                 out = out.reshape(nx, nu, order='F')
             elif field_ == 'S_hess':
-                nx = self.sim_struct.dims.nx
-                nu = self.sim_struct.dims.nu
+                nx = self.acados_sim.dims.nx
+                nu = self.acados_sim.dims.nu
                 out = out.reshape(nx+nu, nx+nu, order='F')
             elif field_ == 'S_algebraic':
-                nx = self.sim_struct.dims.nx
-                nu = self.sim_struct.dims.nu
-                nz = self.sim_struct.dims.nz
+                nx = self.acados_sim.dims.nx
+                nu = self.acados_sim.dims.nu
+                nz = self.acados_sim.dims.nz
                 out = out.reshape(nz, nx+nu, order='F')
+        elif field_ in self.gettable_scalars:
+            scalar = c_double()
+            scalar_data = byref(scalar)
+            self.shared_lib.sim_out_get.argtypes = [c_void_p, c_void_p, c_void_p, c_char_p, c_void_p]
+            self.shared_lib.sim_out_get(self.sim_config, self.sim_dims, self.sim_out, field, scalar_data)
+
+            out = scalar.value
         else:
             raise Exception(f'AcadosSimSolver.get(): Unknown field {field_},' \
                 f' available fields are {", ".join(self.gettable.keys())}')
@@ -388,11 +405,11 @@ class AcadosSimSolver:
         return out
 
 
-    def set(self, field_, value_):
+    def set(self, field_: str, value_):
         """
         Set numerical data inside the solver.
 
-            :param field: string in ['p', 'S_adj', 'T', 'x', 'u', 'xdot', 'z']
+            :param field: string in ['p', 'seed_adj', 'T', 'x', 'u', 'xdot', 'z']
             :param value: the value with appropriate size.
         """
         # cast value_ to avoid conversion issues
@@ -408,7 +425,7 @@ class AcadosSimSolver:
 
         # treat parameters separately
         if field_ == 'p':
-            model_name = self.sim_struct.model.name
+            model_name = self.acados_sim.model.name
             getattr(self.shared_lib, f"{model_name}_acados_sim_update_params").argtypes = [c_void_p, POINTER(c_double), c_int]
             value_data = cast(value_.ctypes.data, POINTER(c_double))
             getattr(self.shared_lib, f"{model_name}_acados_sim_update_params")(self.capsule, value_data, value_.shape[0])
@@ -445,6 +462,33 @@ class AcadosSimSolver:
         return
 
 
+    def options_set(self, field_: str, value_: bool):
+        """
+        Set solver options
+
+            :param field: string in ['sens_forw', 'sens_adj', 'sens_hess']
+            :param value: Boolean
+        """
+        fields = ['sens_forw', 'sens_adj', 'sens_hess']
+        if field_ not in fields:
+            raise Exception(f"field {field_} not supported. Supported values are {', '.join(fields)}.\n")
+
+        field = field_.encode('utf-8')
+        value_ctypes = c_bool(value_)
+
+        if not isinstance(value_, bool):
+            raise TypeError("options_set: expected boolean for value")
+
+        # only allow setting
+        if getattr(self.acados_sim.solver_options, field_) or value_ == False:
+            self.shared_lib.sim_opts_set.argtypes = [c_void_p, c_void_p, c_char_p, POINTER(c_bool)]
+            self.shared_lib.sim_opts_set(self.sim_config, self.sim_opts, field, value_ctypes)
+        else:
+            raise RuntimeError(f"Cannot set option {field_} to True, because it was False in original solver options.\n")
+
+        return
+
+
     def __del__(self):
 
         if self.solver_created:
@@ -459,4 +503,6 @@ class AcadosSimSolver:
             try:
                 self.dlclose(self.shared_lib._handle)
             except:
+                print(f"WARNING: acados Python interface could not close shared_lib handle of AcadosSimSolver {self.model_name}.\n",
+                     "Attempting to create a new one with the same name will likely result in the old one being used!")
                 pass
